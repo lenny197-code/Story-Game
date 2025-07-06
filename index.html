@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronicles of Choice</title>
+    <style>
+        /* Google Font for a classic, readable feel */
+        @import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400;700&display=swap');
+
+        :root {
+            --primary-bg: #1a1a1a;
+            --secondary-bg: #2a2a2a;
+            --text-color: #e0e0e0;
+            --accent-color: #b8a07c;
+            --button-text: #111111;
+            --border-color: #444;
+            --good-color: #3a7d44;
+            --good-color-bright: #8cff9b;
+            --bad-color: #8b3a3a;
+            --pulse-color: #333344; 
+        }
+
+        /* --- ANIMATIONS --- */
+        @keyframes pulseBg {
+            0% { background-color: var(--pulse-color); }
+            50% { background-color: color-mix(in srgb, var(--pulse-color) 85%, #000); }
+            100% { background-color: var(--pulse-color); }
+        }
+        
+        @keyframes endScreenAnimate {
+            0% { opacity: 1; visibility: visible; }
+            80% { opacity: 1; }
+            100% { opacity: 0; visibility: hidden; }
+        }
+
+        @keyframes goodEndingTextFlash {
+            0%, 100% { color: var(--good-color-bright); text-shadow: 0 0 15px var(--good-color-bright); }
+            50% { color: white; text-shadow: none; }
+        }
+
+        /* --- BODY & MAIN CONTAINER --- */
+        body {
+            font-family: 'Spectral', serif;
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            background-color: var(--pulse-color);
+            animation: pulseBg 7s infinite ease-in-out;
+            transition: background-color 1.5s ease-in-out;
+            overflow: hidden;
+        }
+
+        #game-container {
+            background-color: rgba(42, 42, 42, 0.9);
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: var(--accent-color); margin-top: 0; font-weight: 700; border-bottom: 2px solid var(--border-color);
+            padding-bottom: 15px; margin-bottom: 25px;
+        }
+
+        #story-text {
+            font-size: 1.2em; line-height: 1.8; margin-bottom: 30px; min-height: 150px; text-align: left;
+            opacity: 0; transition: opacity 0.8s ease-in-out;
+        }
+        
+        /* --- OVERLAYS --- */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            display: flex; justify-content: center; align-items: center; z-index: 100;
+            opacity: 0; visibility: hidden; pointer-events: none;
+        }
+
+        #game-over-overlay { background-color: rgba(0, 0, 0, 0.7); }
+        #game-over-overlay.visible { animation: endScreenAnimate 4s ease-in-out forwards; }
+        #game-over-overlay h2 { font-size: 15vw; color: var(--bad-color); text-shadow: 0 0 20px rgba(0,0,0,0.8); }
+
+        #good-ending-overlay.visible { animation: endScreenAnimate 4s ease-in-out forwards; }
+        #good-ending-overlay h2 { font-size: 12vw; z-index: 102; animation: goodEndingTextFlash 1s infinite; }
+        #confetti-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 101; }
+
+        /* --- BUTTONS & CHOICES --- */
+        #choices-container { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        @media (min-width: 600px) { #choices-container { grid-template-columns: 1fr 1fr; } }
+
+        .choice-btn {
+            background-color: var(--accent-color); color: var(--button-text); border: none; padding: 15px 20px;
+            font-family: 'Spectral', serif; font-size: 1em; font-weight: 700; border-radius: 8px; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); white-space: normal;
+            transition: background-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+        }
+
+        .choice-btn:hover:not(:disabled) { background-color: #d4bb99; transform: translateY(-3px); }
+        .choice-btn:disabled { cursor: default; }
+        .choice-good { background-color: var(--good-color) !important; color: #ffffff; }
+        .choice-bad { background-color: var(--bad-color) !important; color: #ffffff; }
+
+        #reset-button {
+            margin-top: 30px; background: none; border: 2px solid var(--accent-color); color: var(--accent-color);
+            padding: 10px 20px; border-radius: 8px; font-size: 0.9em; cursor: pointer; transition: background-color 0.3s, color 0.3s;
+        }
+        #reset-button:hover { background-color: var(--accent-color); color: var(--button-text); }
+    </style>
+</head>
+<body>
+
+    <div id="game-over-overlay" class="overlay"><h2>GAME OVER</h2></div>
+    <div id="good-ending-overlay" class="overlay">
+        <canvas id="confetti-canvas"></canvas>
+        <h2>GOOD ENDING</h2>
+    </div>
+
+    <div id="game-container">
+        <h1 id="game-title">Chronicles of Choice</h1>
+        <div id="story-text">Loading your adventure...</div>
+        <div id="choices-container"></div>
+        <button id="reset-button">Choose a Different Story</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const storyTextElement = document.getElementById('story-text');
+            const choicesContainer = document.getElementById('choices-container');
+            const resetButton = document.getElementById('reset-button');
+            const gameTitle = document.getElementById('game-title');
+            const gameOverOverlay = document.getElementById('game-over-overlay');
+            const goodEndingOverlay = document.getElementById('good-ending-overlay');
+            const confettiCanvas = document.getElementById('confetti-canvas');
+            const confettiCtx = confettiCanvas.getContext('2d');
+
+            let currentStoryNodes = [];
+            
+            // --- SOUND ENGINE ---
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+
+            function playSound(type) {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(masterGain);
+                
+                if (type === 'good') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                } else { // 'bad'
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                }
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            }
+            
+            function playGameOverSound() {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc1 = audioCtx.createOscillator(); osc1.type = 'sawtooth';
+                const osc2 = audioCtx.createOscillator(); osc2.type = 'sawtooth';
+                const lfo = audioCtx.createOscillator(); lfo.type = 'sine';
+                const lfoGain = audioCtx.createGain();
+                
+                osc1.frequency.setValueAtTime(82.41, audioCtx.currentTime); // Low E
+                osc2.frequency.setValueAtTime(87.31, audioCtx.currentTime); // Low F (dissonant)
+                lfo.frequency.setValueAtTime(5, audioCtx.currentTime); // 5hz vibration
+                lfoGain.gain.setValueAtTime(5, audioCtx.currentTime); // Vibration depth
+                
+                lfo.connect(lfoGain); lfoGain.connect(osc1.frequency); lfoGain.connect(osc2.frequency);
+                osc1.connect(masterGain); osc2.connect(masterGain);
+                
+                lfo.start(); osc1.start(); osc2.start();
+                const stopTime = audioCtx.currentTime + 4;
+                lfo.stop(stopTime); osc1.stop(stopTime); osc2.stop(stopTime);
+            }
+            
+            function playVictorySound() {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50]; // C Major Arpeggio
+                const osc = audioCtx.createOscillator();
+                osc.type = 'triangle';
+                osc.connect(masterGain);
+                osc.start();
+                
+                notes.forEach((note, index) => {
+                    osc.frequency.setValueAtTime(note, audioCtx.currentTime + index * 0.1);
+                });
+                
+                osc.stop(audioCtx.currentTime + 3);
+            }
+            
+            // --- CONFETTI ENGINE ---
+            let confettiParticles = [];
+            const confettiColors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#00bcd4', '#4caf50', '#ffeb3b', '#ff9800'];
+            let isAnimatingConfetti = false;
+            
+            function createConfetti() {
+                confettiParticles = [];
+                const particleCount = 150;
+                for (let i = 0; i < particleCount; i++) {
+                    confettiParticles.push({
+                        x: Math.random() * confettiCanvas.width,
+                        y: -Math.random() * confettiCanvas.height, // Start off-screen
+                        vx: Math.random() * 4 - 2, // Horizontal speed
+                        vy: Math.random() * 5 + 2, // Vertical speed
+                        size: Math.random() * 8 + 5,
+                        color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+                        rotation: Math.random() * 360,
+                        angularVelocity: Math.random() * 20 - 10
+                    });
+                }
+            }
+
+            function animateConfetti() {
+                if (!isAnimatingConfetti) return;
+                
+                confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+                
+                confettiParticles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.rotation += p.angularVelocity;
+                    
+                    if (p.y > confettiCanvas.height) {
+                        p.x = Math.random() * confettiCanvas.width;
+                        p.y = -p.size;
+                    }
+
+                    confettiCtx.save();
+                    confettiCtx.translate(p.x, p.y);
+                    confettiCtx.rotate(p.rotation * Math.PI / 180);
+                    confettiCtx.fillStyle = p.color;
+                    confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                    confettiCtx.restore();
+                });
+                
+                requestAnimationFrame(animateConfetti);
+            }
+            
+            // --- GAME ENGINE ---
+            function showGameOverSequence() {
+                playGameOverSound();
+                gameOverOverlay.classList.add('visible');
+                setTimeout(() => {
+                    gameOverOverlay.classList.remove('visible');
+                    startGame();
+                }, 4000);
+            }
+
+            function showGoodEndingSequence() {
+                confettiCanvas.width = window.innerWidth;
+                confettiCanvas.height = window.innerHeight;
+                createConfetti();
+                isAnimatingConfetti = true;
+                animateConfetti();
+                
+                playVictorySound();
+                goodEndingOverlay.classList.add('visible');
+                
+                setTimeout(() => {
+                    isAnimatingConfetti = false;
+                    goodEndingOverlay.classList.remove('visible');
+                    startGame();
+                }, 4000);
+            }
+            
+            function updateBackground(color) {
+                document.body.style.setProperty('--pulse-color', color);
+            }
+
+            function showScene(nodeId) {
+                const scene = currentStoryNodes.find(node => node.id === nodeId);
+                if (!scene) return startGame();
+                
+                storyTextElement.style.opacity = 0;
+                
+                setTimeout(() => {
+                    updateBackground(scene.bgColor);
+                    storyTextElement.innerText = scene.text;
+                    choicesContainer.innerHTML = '';
+
+                    scene.choices.forEach(choice => {
+                        const button = document.createElement('button');
+                        button.innerText = choice.text;
+                        button.classList.add('choice-btn');
+                        button.dataset.nextId = choice.nextId;
+                        button.dataset.type = choice.type;
+                        button.addEventListener('click', selectChoice);
+                        choicesContainer.appendChild(button);
+                    });
+                    storyTextElement.style.opacity = 1;
+                }, 600);
+            }
+
+            function selectChoice(e) {
+                const clickedButton = e.target;
+                const nextNodeId = clickedButton.dataset.nextId;
+                const choiceType = clickedButton.dataset.type;
+
+                choicesContainer.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+                clickedButton.classList.add(choiceType === 'good' ? 'choice-good' : 'choice-bad');
+                playSound(choiceType);
+                
+                if (nextNodeId === 'GAME_OVER_BAD') {
+                    setTimeout(showGameOverSequence, 500);
+                } else if (nextNodeId === 'GOOD_ENDING') {
+                    setTimeout(showGoodEndingSequence, 500);
+                } else {
+                    showScene(nextNodeId);
+                }
+            }
+
+            function startGame() {
+                const storyKeys = Object.keys(storyModules);
+                const randomStoryKey = storyKeys[Math.floor(Math.random() * storyKeys.length)];
+                const selectedStory = storyModules[randomStoryKey];
+
+                gameTitle.innerText = selectedStory.title;
+                currentStoryNodes = selectedStory.nodes;
+                showScene(selectedStory.startNodeId);
+            }
+
+            resetButton.addEventListener('click', startGame);
+
+            // --- STORY DATA (with GOOD_ENDING and GAME_OVER_BAD) ---
+            const storyModules = {
+                fantasy: {
+                    title: 'The Serpent Blade',
+                    startNodeId: 'f_start',
+                    nodes: [
+                        { id: 'f_start', text: 'You are in the "Weary Dragon," a tavern smelling of stale ale and old stories. A cloaked figure in the corner catches your eye. Meanwhile, the town notice board has a fresh posting about goblin troubles.', bgColor: '#4A3F35', choices: [ { text: 'Approach the cloaked figure.', nextId: 'f_figure', type: 'bad' }, { text: 'Check the notice board.', nextId: 'f_goblins', type: 'good' } ] },
+                        { id: 'f_goblins', text: 'The notice offers 100 gold for clearing out a goblin den in the Whisperwood. A safe, straightforward job.', bgColor: '#2E4033', choices: [ { text: 'Accept the goblin contract.', nextId: 'f_goblin_path', type: 'good' }, { text: 'This is too boring. Talk to the figure instead.', nextId: 'f_figure', type: 'bad' } ] },
+                        { id: 'f_figure', text: 'The figure reveals herself to be an elven scout. "The Serpent Cult has stolen a sacred artifact," she whispers. "I need someone who isn\'t afraid of the shadows. The danger is immense."', bgColor: '#3B3A5A', choices: [ { text: 'Accept her dangerous quest.', nextId: 'f_cult_path', type: 'bad' }, { text: 'Decline. The risk is too great.', nextId: 'f_start', type: 'good' } ] },
+                        { id: 'f_goblin_path', text: 'The goblin den is a noisy, chaotic mess. You dispatch them with ease, but find a strange, serpent-marked dagger on their leader. It hums with a dark energy.', bgColor: '#5A2A2A', choices: [ { text: 'Keep the dagger.', nextId: 'f_end_bad', type: 'bad' }, { text: 'Leave the cursed thing.', nextId: 'f_end_good', type: 'good' } ] },
+                        { id: 'f_cult_path', text: 'The scout leads you through forgotten tunnels. You ambush two cultists, recovering the artifact—a beautiful, feathered chalice. The scout pays you handsomely.', bgColor: '#6A6D99', choices: [ { text: 'Claim your reward.', nextId: 'GOOD_ENDING', type: 'good' }, { text: 'Ask about the Serpent Cult.', nextId: 'f_figure', type: 'bad' } ] },
+                        { id: 'f_end_bad', text: 'The dagger whispers to you in your sleep, promises of power that slowly corrupt your mind. You have become another pawn of the Serpent.', bgColor: '#4d0f0f', choices: [ { text: 'Accept your fate.', nextId: 'GAME_OVER_BAD', type: 'bad' }, { text: '...', nextId: 'GAME_OVER_BAD', type: 'bad' } ] },
+                        { id: 'f_end_good', text: 'You collect your 100 gold and enjoy a quiet week. Life is simple, and your soul is your own. A triumphant end.', bgColor: '#B8A07C', choices: [ { text: 'A tale well told.', nextId: 'GOOD_ENDING', type: 'good' }, { text: 'Enjoy your peace.', nextId: 'GOOD_ENDING', type: 'good' } ] }
+                    ]
+                },
+                sciFi: {
+                    title: 'The Void Siren',
+                    startNodeId: 's_start',
+                    nodes: [
+                        { id: 's_start', text: 'You awaken from cryo-sleep aboard the star-freighter "Orion". Red alert lights flash silently. The only sounds are your own breathing and a faint, rhythmic scraping from deep within the ship.', bgColor: '#2C3E50', choices: [ { text: 'Head to the bridge to assess the situation.', nextId: 's_bridge', type: 'good' }, { text: 'Investigate the scraping noise.', nextId: 's_cargo_bay', type: 'bad' } ] },
+                        { id: 's_bridge', text: 'The bridge is empty. The ship\'s log shows an unknown biological signature was brought aboard. Life support is failing in the cargo bay. An escape pod is still functional.', bgColor: '#34495E', choices: [ { text: 'Launch the escape pod now.', nextId: 's_end_escape', type: 'good' }, { text: 'Go to the cargo bay to find survivors.', nextId: 's_cargo_bay', type: 'bad' } ] },
+                        { id: 's_cargo_bay', text: 'You enter the cavernous cargo bay. A large, chittering xenomorph with bladed limbs is tearing into a stasis container. It hasn\'t seen you yet. The main airlock controls are nearby.', bgColor: '#5A2A2A', choices: [ { text: 'Try to flush it out the airlock.', nextId: 's_airlock', type: 'bad' }, { text: 'Fire your pulse rifle at it.', nextId: 's_end_fight', type: 'bad' } ] },
+                        { id: 's_airlock', text: 'You hit the emergency purge. The creature is sucked into the void, but it slashes the control panel as it goes. You are now trapped in the cargo bay with no life support.', bgColor: '#8b0000', choices: [ { text: 'This is the end.', nextId: 'GAME_OVER_BAD', type: 'bad' }, { text: 'No escape.', nextId: 'GAME_OVER_BAD', type: 'bad' } ] },
+                        { id: 's_end_fight', text: 'Your shots bounce off its carapace. It moves with blinding speed, and the last thing you see is its bladed claw descending.', bgColor: '#4d0f0f', choices: [ { text: 'Accept your fate.', nextId: 'GAME_OVER_BAD', type: 'bad' }, { text: '...', nextId: 'GAME_OVER_BAD', type: 'bad' } ] },
+                        { id: 's_end_escape', text: 'You jettison from the "Orion" and watch it drift away. You are alive, but alone in the vast emptiness of space, with only a distress beacon for hope. A bittersweet but good ending.', bgColor: '#3498DB', choices: [ { text: 'Live to tell the tale.', nextId: 'GOOD_ENDING', type: 'good' }, { text: 'Embrace the solitude.', nextId: 'GOOD_ENDING', type: 'good' } ] }
+                    ]
+                },
+                modernMystery: {
+                    title: 'The Crimson Letter',
+                    startNodeId: 'm_start',
+                    nodes: [
+                        { id: 'm_start', text: 'It\'s a rainy Tuesday. A courier delivers a sleek, black envelope to your office. No return address, just your name written in crimson ink.', bgColor: '#343838', choices: [ { text: 'Open the envelope.', nextId: 'm_open', type: 'bad' }, { text: 'Throw it away. It\'s probably junk mail.', nextId: 'm_end_boring', type: 'good' } ] },
+                        { id: 'm_open', text: 'Inside is a single, heavy poker chip and a card: "The Black Orchid club. Midnight. Come alone." This is clearly a dangerous invitation.', bgColor: '#522B29', choices: [ { text: 'Go to the club at midnight.', nextId: 'm_club', type: 'bad' }, { text: 'Take the chip to the police.', nextId: 'm_police', type: 'good' } ] },
+                        { id: 'm_police', text: 'Detective Miller eyes the chip. "This belongs to the Nightingale Syndicate. They don\'t like witnesses," he says grimly. "We can offer you protection, but you\'ll be a target."', bgColor: '#3C415C', choices: [ { text: 'Accept witness protection.', nextId: 'm_end_witness', type: 'good' }, { text: 'I\'ll take my chances alone.', nextId: 'm_club', type: 'bad' } ] },
+                        { id: 'm_club', text: 'The club is a haze of cigar smoke and quiet whispers. A woman with a dragon tattoo motions you to a private booth. "You came," she says with a cold smile. "We have a job for you."', bgColor: '#711A27', choices: [ { text: 'You\'re in too deep now.', nextId: 'GAME_OVER_BAD', type: 'bad' }, { text: 'There\'s no going back.', nextId: 'GAME_OVER_BAD', type: 'bad' } ] },
+                        { id: 'm_end_boring', text: 'You toss the envelope. You finish your coffee, complete your spreadsheets, and go home. Nothing interesting ever happens to you. A victory for a quiet life.', bgColor: '#6E6E6E', choices: [ { text: 'Choose normalcy.', nextId: 'GOOD_ENDING', type: 'good' }, { text: 'Another day, another dollar.', nextId: 'GOOD_ENDING', type: 'good' } ] },
+                        { id: 'm_end_witness', text: 'You are given a new name, a new town, a new life. You are safe, but you always look over your shoulder, forever haunted by the life you left behind. A safe, but hollow victory.', bgColor: '#4A536B', choices: [ { text: 'Disappear.', nextId: 'GOOD_ENDING', type: 'good' }, { text: 'Start over.', nextId: 'GOOD_ENDING', 'type': 'good' } ] }
+                    ]
+                }
+            };
+            
+            startGame();
+        });
+    </script>
+</body>
+</html>
